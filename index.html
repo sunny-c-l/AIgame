@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 3D FPS 练枪 - 瞄准大师</title>
+    <style>
+        :root {
+            --bg: #0a0a14;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            overflow: hidden;
+            font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+            height: 100vh;
+            width: 100vw;
+            cursor: default;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ripple-hint {
+            position: fixed;
+            pointer-events: none;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.5);
+            transform: scale(0);
+            animation: rippleOut 0.6s ease-out forwards;
+            z-index: 10;
+        }
+        @keyframes rippleOut {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        (function() {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+
+            let W, H;
+            let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+            function resize() {
+                W = window.innerWidth;
+                H = window.innerHeight;
+                canvas.width = W * dpr;
+                canvas.height = H * dpr;
+                canvas.style.width = W + 'px';
+                canvas.style.height = H + 'px';
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.scale(dpr, dpr);
+                updateCardPositions();
+            }
+
+            const mouse = {
+                x: -200,
+                y: -200,
+                tx: -200,
+                ty: -200,
+                hoveredCard: -1,
+                isDown: false,
+            };
+
+            // ==================== 游戏数据（仅一个游戏） ====================
+            const gameCards = [{
+                id: 'target',
+                name: '3D FPS 练枪',
+                icon: 'target',           // 图标类型改为标靶
+                color: '#E67E22',
+                colorGlow: '#d35400',
+                url: 'https://sunny-c-l.github.io/AIgame/3DaimingFPS.html',
+                desc: '提升瞄准，掌控战场',
+            }];
+
+            let cardLayouts = [];
+            let cols = 1;
+            let cardW = 220;
+            let cardH = 260;
+            let gapX = 0;
+            let gapY = 0;
+            let gridOffsetX = 0;
+            let gridOffsetY = 0;
+            let titleY = 0;
+
+            function updateCardPositions() {
+                if (W < 420) {
+                    cardW = 180;
+                    cardH = 220;
+                } else if (W < 600) {
+                    cardW = 200;
+                    cardH = 240;
+                } else {
+                    cardW = 240;
+                    cardH = 280;
+                }
+
+                cols = 1;
+                gapX = 0;
+                gapY = 0;
+
+                const totalW = cardW;
+                const totalH = cardH;
+                const titleHeight = Math.min(120, H * 0.18);
+                titleY = titleHeight * 0.55;
+
+                const remainingH = H - titleHeight;
+                gridOffsetX = (W - totalW) / 2;
+                gridOffsetY = titleHeight + (remainingH - totalH) / 2;
+
+                cardLayouts = [];
+                for (let i = 0; i < gameCards.length; i++) {
+                    cardLayouts.push({
+                        x: gridOffsetX,
+                        y: gridOffsetY,
+                        w: cardW,
+                        h: cardH,
+                        data: gameCards[i],
+                        index: i,
+                        scale: 1,
+                        targetScale: 1,
+                        glowAlpha: 0,
+                        targetGlowAlpha: 0,
+                        pulsePhase: Math.random() * Math.PI * 2,
+                    });
+                }
+            }
+
+            // ==================== 粒子系统 ====================
+            const particles = [];
+            const PARTICLE_COUNT_BASE = 100;
+
+            function createParticles() {
+                particles.length = 0;
+                const count = Math.floor(PARTICLE_COUNT_BASE * (W * H) / (1920 * 1080));
+                const actualCount = Math.max(60, Math.min(count, 180));
+
+                for (let i = 0; i < actualCount; i++) {
+                    particles.push({
+                        x: Math.random() * W,
+                        y: Math.random() * H,
+                        vx: (Math.random() - 0.5) * 0.35,
+                        vy: (Math.random() - 0.5) * 0.35,
+                        size: Math.random() * 2.2 + 0.6,
+                        opacity: Math.random() * 0.7 + 0.3,
+                        twinkleSpeed: Math.random() * 0.02 + 0.005,
+                        twinkleOffset: Math.random() * Math.PI * 2,
+                        isShooting: false,
+                        shootSpeed: 0,
+                        shootAngle: 0,
+                        shootLife: 0,
+                        shootMaxLife: 0,
+                        trail: [],
+                    });
+                }
+                spawnMeteor();
+                spawnMeteor();
+            }
+
+            function spawnMeteor() {
+                if (particles.length < 5) return;
+                const candidates = particles.filter(p => !p.isShooting);
+                if (candidates.length === 0) return;
+                const p = candidates[Math.floor(Math.random() * candidates.length)];
+                p.isShooting = true;
+                p.shootSpeed = Math.random() * 4 + 3;
+                p.shootAngle = Math.random() * Math.PI * 0.6 + Math.PI * 0.2;
+                p.x = Math.random() * W * 0.3;
+                p.y = Math.random() * H * 0.5;
+                p.shootLife = 0;
+                p.shootMaxLife = Math.random() * 80 + 60;
+                p.size = Math.random() * 1.5 + 1;
+                p.opacity = 1;
+                p.trail = [];
+            }
+
+            function roundRect(x, y, w, h, r) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.arcTo(x + w, y, x + w, y + r, r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+                ctx.lineTo(x + r, y + h);
+                ctx.arcTo(x, y + h, x, y + h - r, r);
+                ctx.lineTo(x, y + r);
+                ctx.arcTo(x, y, x + r, y, r);
+                ctx.closePath();
+            }
+
+            // ==================== 绘制图标（标靶） ====================
+            function drawIcon(iconType, cx, cy, size, color) {
+                ctx.save();
+                ctx.translate(cx, cy);
+                const s = size / 40; // 基准缩放
+
+                if (iconType === 'target') {
+                    // 标靶：同心圆环 + 中心红点
+                    const outerR = 18 * s;
+                    const ringWidth = 2.2 * s;
+                    
+                    // 外环（深灰）
+                    ctx.beginPath();
+                    ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+                    ctx.fillStyle = '#2C3E50';
+                    ctx.fill();
+                    ctx.strokeStyle = '#BDC3C7';
+                    ctx.lineWidth = ringWidth;
+                    ctx.stroke();
+
+                    // 第二环（白色）
+                    const r2 = outerR - ringWidth * 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, r2, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ECF0F1';
+                    ctx.fill();
+                    ctx.strokeStyle = '#BDC3C7';
+                    ctx.lineWidth = ringWidth * 0.8;
+                    ctx.stroke();
+
+                    // 第三环（深色）
+                    const r3 = r2 - ringWidth * 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, r3, 0, Math.PI * 2);
+                    ctx.fillStyle = '#2C3E50';
+                    ctx.fill();
+                    ctx.strokeStyle = '#95A5A6';
+                    ctx.lineWidth = ringWidth * 0.6;
+                    ctx.stroke();
+
+                    // 内环（红色）
+                    const r4 = r3 - ringWidth * 1.8;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, r4, 0, Math.PI * 2);
+                    ctx.fillStyle = '#E74C3C';
+                    ctx.fill();
+                    ctx.strokeStyle = '#C0392B';
+                    ctx.lineWidth = ringWidth * 0.5;
+                    ctx.stroke();
+
+                    // 中心点（金色）
+                    const centerR = r4 * 0.5;
+                    const centerGrad = ctx.createRadialGradient(0, 0, centerR * 0.2, 0, 0, centerR);
+                    centerGrad.addColorStop(0, '#F1C40F');
+                    centerGrad.addColorStop(1, '#D35400');
+                    ctx.beginPath();
+                    ctx.arc(0, 0, centerR, 0, Math.PI * 2);
+                    ctx.fillStyle = centerGrad;
+                    ctx.fill();
+                    ctx.strokeStyle = '#A04000';
+                    ctx.lineWidth = 0.8 * s;
+                    ctx.stroke();
+
+                    // 十字准星装饰（外侧）
+                    ctx.strokeStyle = 'rgba(231, 76, 60, 0.7)';
+                    ctx.lineWidth = 1.5 * s;
+                    ctx.lineCap = 'round';
+                    const crossLen = outerR + 6 * s;
+                    const gap = 3 * s;
+                    // 上
+                    ctx.beginPath();
+                    ctx.moveTo(0, -outerR - gap);
+                    ctx.lineTo(0, -crossLen);
+                    ctx.stroke();
+                    // 下
+                    ctx.beginPath();
+                    ctx.moveTo(0, outerR + gap);
+                    ctx.lineTo(0, crossLen);
+                    ctx.stroke();
+                    // 左
+                    ctx.beginPath();
+                    ctx.moveTo(-outerR - gap, 0);
+                    ctx.lineTo(-crossLen, 0);
+                    ctx.stroke();
+                    // 右
+                    ctx.beginPath();
+                    ctx.moveTo(outerR + gap, 0);
+                    ctx.lineTo(crossLen, 0);
+                    ctx.stroke();
+
+                    // 准星端点小圆
+                    ctx.fillStyle = '#E74C3C';
+                    [
+                        [0, -crossLen],
+                        [0, crossLen],
+                        [-crossLen, 0],
+                        [crossLen, 0]
+                    ].forEach(([dx, dy]) => {
+                        ctx.beginPath();
+                        ctx.arc(dx, dy, 1.8 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
+
+                } else {
+                    // 备用
+                    ctx.fillStyle = '#FFF';
+                    ctx.font = `${16*s}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('?', 0, 0);
+                }
+
+                ctx.restore();
+            }
+
+            // ==================== 绘制场景 ====================
+            function drawBackground() {
+                const bgGrad = ctx.createRadialGradient(W * 0.35, H * 0.3, W * 0.1, W * 0.5, H * 0.5, W * 0.85);
+                bgGrad.addColorStop(0, '#1a1a38');
+                bgGrad.addColorStop(0.5, '#0d0d22');
+                bgGrad.addColorStop(1, '#050510');
+                ctx.fillStyle = bgGrad;
+                ctx.fillRect(0, 0, W, H);
+
+                ctx.strokeStyle = 'rgba(255,255,255,0.015)';
+                ctx.lineWidth = 0.5;
+                const gridSpacing = 60;
+                for (let x = gridSpacing; x < W; x += gridSpacing) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, H);
+                    ctx.stroke();
+                }
+                for (let y = gridSpacing; y < H; y += gridSpacing) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(W, y);
+                    ctx.stroke();
+                }
+            }
+
+            function drawParticles(time) {
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+                    if (p.isShooting) {
+                        p.shootLife++;
+                        p.x += Math.cos(p.shootAngle) * p.shootSpeed;
+                        p.y += Math.sin(p.shootAngle) * p.shootSpeed;
+                        p.trail.push({ x: p.x, y: p.y, life: 0 });
+                        if (p.trail.length > 25) p.trail.shift();
+                        for (let t = p.trail.length - 1; t >= 0; t--) {
+                            p.trail[t].life++;
+                            if (p.trail[t].life > 25) p.trail.splice(t, 1);
+                        }
+                        if (p.trail.length > 1) {
+                            for (let t = 1; t < p.trail.length; t++) {
+                                const alpha = t / p.trail.length * 0.7;
+                                const tw = (t / p.trail.length) * 3;
+                                ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+                                ctx.lineWidth = tw;
+                                ctx.lineCap = 'round';
+                                ctx.beginPath();
+                                ctx.moveTo(p.trail[t - 1].x, p.trail[t - 1].y);
+                                ctx.lineTo(p.trail[t].x, p.trail[t].y);
+                                ctx.stroke();
+                            }
+                        }
+                        ctx.fillStyle = '#fff';
+                        ctx.shadowColor = 'rgba(255,255,255,0.9)';
+                        ctx.shadowBlur = 8;
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.size * 1.5, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+
+                        if (p.shootLife > p.shootMaxLife || p.x > W + 50 || p.y > H + 50 || p.x < -50) {
+                            p.isShooting = false;
+                            p.trail = [];
+                            p.x = Math.random() * W;
+                            p.y = Math.random() * H;
+                            p.vx = (Math.random() - 0.5) * 0.35;
+                            p.vy = (Math.random() - 0.5) * 0.35;
+                            p.size = Math.random() * 2.2 + 0.6;
+                            p.opacity = Math.random() * 0.7 + 0.3;
+                        }
+                    } else {
+                        const dx = mouse.tx - p.x;
+                        const dy = mouse.ty - p.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        const attractRadius = 180;
+                        let ax = 0, ay = 0;
+                        if (dist < attractRadius && dist > 0) {
+                            const force = (1 - dist / attractRadius) * 0.04;
+                            ax = (dx / dist) * force;
+                            ay = (dy / dist) * force;
+                        }
+                        p.vx += ax;
+                        p.vy += ay;
+                        p.vx *= 0.995;
+                        p.vy *= 0.995;
+                        const maxSpeed = 1.2;
+                        const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+                        if (speed > maxSpeed) {
+                            p.vx = (p.vx / speed) * maxSpeed;
+                            p.vy = (p.vy / speed) * maxSpeed;
+                        }
+                        p.x += p.vx;
+                        p.y += p.vy;
+                        if (p.x < -20) p.x = W + 20;
+                        if (p.x > W + 20) p.x = -20;
+                        if (p.y < -20) p.y = H + 20;
+                        if (p.y > H + 20) p.y = -20;
+                        const twinkle = Math.sin(time * p.twinkleSpeed + p.twinkleOffset) * 0.3 + 0.7;
+                        const alpha = p.opacity * twinkle;
+                        const brightBoost = dist < attractRadius ? (1 - dist / attractRadius) * 0.5 : 0;
+                        const finalAlpha = Math.min(1, alpha + brightBoost);
+                        ctx.fillStyle = `rgba(200,220,255,${finalAlpha})`;
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+                if (Math.random() < 0.003) {
+                    spawnMeteor();
+                }
+            }
+
+            function drawCards(time) {
+                for (let i = 0; i < cardLayouts.length; i++) {
+                    const card = cardLayouts[i];
+                    const data = card.data;
+                    const isHovered = mouse.hoveredCard === i;
+
+                    card.targetScale = isHovered ? 1.07 : 1;
+                    card.targetGlowAlpha = isHovered ? 1 : 0;
+                    card.scale += (card.targetScale - card.scale) * 0.18;
+                    card.glowAlpha += (card.targetGlowAlpha - card.glowAlpha) * 0.22;
+
+                    const cx = card.x + card.w / 2;
+                    const cy = card.y + card.h / 2;
+                    const scaledW = card.w * card.scale;
+                    const scaledH = card.h * card.scale;
+                    const sx = cx - scaledW / 2;
+                    const sy = cy - scaledH / 2;
+                    const cornerR = 16;
+
+                    ctx.save();
+
+                    if (card.glowAlpha > 0.01) {
+                        ctx.shadowColor = data.colorGlow;
+                        ctx.shadowBlur = 22 * card.glowAlpha;
+                    }
+
+                    const bgGrad = ctx.createLinearGradient(sx, sy, sx, sy + scaledH);
+                    bgGrad.addColorStop(0, 'rgba(22,22,50,0.92)');
+                    bgGrad.addColorStop(0.5, 'rgba(18,18,40,0.94)');
+                    bgGrad.addColorStop(1, 'rgba(14,14,32,0.96)');
+                    ctx.fillStyle = bgGrad;
+                    roundRect(sx, sy, scaledW, scaledH, cornerR);
+                    ctx.fill();
+
+                    const borderAlpha = 0.5 + card.glowAlpha * 0.5;
+                    ctx.strokeStyle = `rgba(230,126,34,${borderAlpha})`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    if (card.glowAlpha > 0.05) {
+                        ctx.strokeStyle = `rgba(230,126,34,${card.glowAlpha * 0.6})`;
+                        ctx.lineWidth = 4;
+                        ctx.shadowBlur = 30 * card.glowAlpha;
+                        ctx.shadowColor = data.colorGlow;
+                        roundRect(sx + 3, sy + 3, scaledW - 6, scaledH - 6, cornerR - 2);
+                        ctx.stroke();
+                    }
+
+                    ctx.shadowBlur = 0;
+                    ctx.shadowColor = 'transparent';
+
+                    const barH = 5;
+                    ctx.fillStyle = data.color;
+                    roundRect(sx + cornerR / 2, sy + 2, scaledW - cornerR, barH, barH / 2);
+                    ctx.fill();
+
+                    const iconCY = sy + scaledH * 0.4;
+                    const iconSize = Math.min(scaledW * 0.65, scaledH * 0.45, 80);
+                    drawIcon(data.icon, cx, iconCY, iconSize, data.color);
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = `bold ${Math.min(scaledW*0.11, 18)}px "PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(data.name, cx, sy + scaledH * 0.73);
+
+                    ctx.fillStyle = 'rgba(200,200,220,0.7)';
+                    ctx.font = `${Math.min(scaledW*0.07, 13)}px "PingFang SC","Microsoft YaHei",sans-serif`;
+                    ctx.fillText(data.desc, cx, sy + scaledH * 0.85);
+
+                    if (card.glowAlpha > 0.3) {
+                        const dotCount = 6;
+                        for (let d = 0; d < dotCount; d++) {
+                            const angle = (time * 0.001 + d * Math.PI * 2 / dotCount) % (Math.PI * 2);
+                            const dotDist = scaledW * 0.58;
+                            const dx = cx + Math.cos(angle) * dotDist;
+                            const dy = iconCY + Math.sin(angle) * dotDist * 0.7;
+                            ctx.fillStyle = `rgba(230,126,34,${card.glowAlpha * 0.7})`;
+                            ctx.beginPath();
+                            ctx.arc(dx, dy, 2.5, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+
+                    ctx.restore();
+                }
+            }
+
+            function drawTitle(time) {
+                const glowAlpha = 0.35 + Math.sin(time * 0.0015) * 0.15;
+                ctx.fillStyle = `rgba(180,200,255,${glowAlpha})`;
+                ctx.font = `bold ${Math.min(W*0.05, 42)}px "PingFang SC","Microsoft YaHei","SimHei","Helvetica Neue",sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const tx = W / 2;
+                const ty = titleY;
+                ctx.shadowColor = 'rgba(255,140,60,0.6)';
+                ctx.shadowBlur = 35;
+                ctx.fillText('🎯 瞄准训练场', tx, ty);
+                ctx.shadowBlur = 0;
+                ctx.shadowColor = 'transparent';
+
+                ctx.fillStyle = 'rgba(180,190,220,0.6)';
+                ctx.font = `${Math.min(W*0.02, 15)}px "PingFang SC","Microsoft YaHei",sans-serif`;
+                ctx.fillText('进入3D空间，练就枪枪爆头', tx, ty + Math.min(W * 0.04, 32));
+
+                const lineW = Math.min(W * 0.35, 350);
+                const lineY = ty + Math.min(W * 0.07, 55);
+                const lineGrad = ctx.createLinearGradient(tx - lineW / 2, lineY, tx + lineW / 2, lineY);
+                lineGrad.addColorStop(0, 'rgba(255,140,60,0)');
+                lineGrad.addColorStop(0.3, 'rgba(255,140,60,0.5)');
+                lineGrad.addColorStop(0.5, 'rgba(255,180,100,0.7)');
+                lineGrad.addColorStop(0.7, 'rgba(255,140,60,0.5)');
+                lineGrad.addColorStop(1, 'rgba(255,140,60,0)');
+                ctx.strokeStyle = lineGrad;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(tx - lineW / 2, lineY);
+                ctx.lineTo(tx + lineW / 2, lineY);
+                ctx.stroke();
+
+                for (const lx of [tx - lineW / 2, tx + lineW / 2]) {
+                    ctx.fillStyle = 'rgba(255,160,80,0.7)';
+                    ctx.beginPath();
+                    const ds = 5;
+                    ctx.moveTo(lx, lineY - ds);
+                    ctx.lineTo(lx + ds, lineY);
+                    ctx.lineTo(lx, lineY + ds);
+                    ctx.lineTo(lx - ds, lineY);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+
+            function drawMouseGlow(time) {
+                if (mouse.tx < -100 || mouse.ty < -100) return;
+                const glowGrad = ctx.createRadialGradient(mouse.tx, mouse.ty, 0, mouse.tx, mouse.ty, 160);
+                glowGrad.addColorStop(0, 'rgba(255,150,80,0.08)');
+                glowGrad.addColorStop(0.5, 'rgba(255,120,50,0.03)');
+                glowGrad.addColorStop(1, 'rgba(200,80,20,0)');
+                ctx.fillStyle = glowGrad;
+                ctx.beginPath();
+                ctx.arc(mouse.tx, mouse.ty, 160, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            function render(time) {
+                ctx.clearRect(0, 0, W, H);
+                drawBackground();
+                drawMouseGlow(time);
+                drawParticles(time);
+                drawTitle(time);
+                drawCards(time);
+
+                mouse.x += (mouse.tx - mouse.x) * 0.25;
+                mouse.y += (mouse.ty - mouse.y) * 0.25;
+
+                requestAnimationFrame(render);
+            }
+
+            function getCanvasPos(e) {
+                const rect = canvas.getBoundingClientRect();
+                return {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top,
+                };
+            }
+
+            function getTouchPos(touch) {
+                const rect = canvas.getBoundingClientRect();
+                return {
+                    x: touch.clientX - rect.left,
+                    y: touch.clientY - rect.top,
+                };
+            }
+
+            function findCardUnderPoint(px, py) {
+                for (let i = cardLayouts.length - 1; i >= 0; i--) {
+                    const card = cardLayouts[i];
+                    const cx = card.x + card.w / 2;
+                    const cy = card.y + card.h / 2;
+                    const sw = card.w * card.scale;
+                    const sh = card.h * card.scale;
+                    const sx = cx - sw / 2;
+                    const sy = cy - sh / 2;
+                    if (px >= sx && px <= sx + sw && py >= sy && py <= sy + sh) {
+                        return i;
+                    }
+                }
+                return -1;
+            }
+
+            canvas.addEventListener('mousemove', (e) => {
+                const pos = getCanvasPos(e);
+                mouse.tx = pos.x;
+                mouse.ty = pos.y;
+                const prev = mouse.hoveredCard;
+                mouse.hoveredCard = findCardUnderPoint(pos.x, pos.y);
+                if (mouse.hoveredCard !== prev) {
+                    canvas.style.cursor = mouse.hoveredCard >= 0 ? 'pointer' : 'default';
+                }
+            });
+
+            canvas.addEventListener('click', (e) => {
+                const pos = getCanvasPos(e);
+                const idx = findCardUnderPoint(pos.x, pos.y);
+                if (idx >= 0 && idx < cardLayouts.length) {
+                    const url = cardLayouts[idx].data.url;
+                    const card = cardLayouts[idx];
+                    card.scale = 1.12;
+                    card.glowAlpha = 1.5;
+                    const ripple = document.createElement('div');
+                    ripple.className = 'ripple-hint';
+                    ripple.style.left = pos.x + 'px';
+                    ripple.style.top = pos.y + 'px';
+                    ripple.style.width = '20px';
+                    ripple.style.height = '20px';
+                    ripple.style.marginLeft = '-10px';
+                    ripple.style.marginTop = '-10px';
+                    document.body.appendChild(ripple);
+                    setTimeout(() => ripple.remove(), 600);
+                    setTimeout(() => {
+                        window.location.href = url;
+                    }, 180);
+                }
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                mouse.tx = -200;
+                mouse.ty = -200;
+                mouse.hoveredCard = -1;
+                canvas.style.cursor = 'default';
+            });
+
+            canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    const pos = getTouchPos(e.touches[0]);
+                    mouse.tx = pos.x;
+                    mouse.ty = pos.y;
+                    mouse.hoveredCard = findCardUnderPoint(pos.x, pos.y);
+                    mouse.isDown = true;
+                }
+            }, { passive: true });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 1 && mouse.isDown) {
+                    const pos = getTouchPos(e.touches[0]);
+                    mouse.tx = pos.x;
+                    mouse.ty = pos.y;
+                    mouse.hoveredCard = findCardUnderPoint(pos.x, pos.y);
+                }
+            }, { passive: true });
+
+            canvas.addEventListener('touchend', (e) => {
+                if (mouse.isDown && mouse.hoveredCard >= 0) {
+                    const idx = mouse.hoveredCard;
+                    if (idx < cardLayouts.length) {
+                        const url = cardLayouts[idx].data.url;
+                        const card = cardLayouts[idx];
+                        card.scale = 1.12;
+                        card.glowAlpha = 1.5;
+                        setTimeout(() => {
+                            window.location.href = url;
+                        }, 180);
+                    }
+                }
+                mouse.isDown = false;
+                mouse.hoveredCard = -1;
+                mouse.tx = -200;
+                mouse.ty = -200;
+            });
+
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    resize();
+                    createParticles();
+                }, 250);
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && mouse.hoveredCard >= 0 && mouse.hoveredCard < cardLayouts.length) {
+                    const url = cardLayouts[mouse.hoveredCard].data.url;
+                    const card = cardLayouts[mouse.hoveredCard];
+                    card.scale = 1.12;
+                    card.glowAlpha = 1.5;
+                    setTimeout(() => {
+                        window.location.href = url;
+                    }, 180);
+                }
+            });
+
+            resize();
+            createParticles();
+            requestAnimationFrame(render);
+
+            console.log('🎯 3D FPS 练枪入口已开启！');
+            console.log('   🔫 点击卡片进入瞄准训练');
+            console.log('   ✨ 鼠标移动吸引粒子，流星划过夜空');
+            console.log('   📱 完美支持移动端触摸');
+        })();
+    </script>
+</body>
+</html>
