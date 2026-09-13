@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>FPS 灵敏度测试器</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121820; --line:#212a35;
+    --txt:#e6edf3; --dim:#8b949e; --accent:#5cff9d; --red:#ff5252;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--bg)}
+  body{
+    font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    color:var(--txt);-webkit-font-smoothing:antialiased;user-select:none;
+  }
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:none}
+
+  .hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+  .topbar{
+    position:absolute;top:0;left:0;right:0;display:flex;gap:34px;justify-content:center;
+    padding:14px 20px;font-size:11px;letter-spacing:.08em;color:var(--dim);
+    background:linear-gradient(to bottom,rgba(11,15,20,.92),rgba(11,15,20,0));
+  }
+  .topbar .cell{display:flex;flex-direction:column;align-items:center;gap:3px}
+  .topbar .cell b{font-size:16px;color:var(--txt);font-variant-numeric:tabular-nums;letter-spacing:0}
+
+  .overlay{
+    position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;
+    background:rgba(6,9,13,.82);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    padding:24px;
+  }
+  .overlay.hidden{display:none}
+  .card{
+    width:100%;max-width:680px;max-height:92vh;overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    padding:34px 38px;box-shadow:0 24px 70px rgba(0,0,0,.6);
+  }
+  .card h1{font-size:24px;letter-spacing:-.02em;margin-bottom:10px}
+  .card h2{font-size:15px;color:var(--dim);font-weight:500;letter-spacing:.04em;margin:26px 0 12px}
+  .lead{color:var(--dim);font-size:14px;line-height:1.7}
+  .rules{list-style:none;margin:20px 0 6px;display:flex;flex-direction:column;gap:9px}
+  .rules li{font-size:13.5px;color:#b6c2ce;line-height:1.5;padding-left:20px;position:relative}
+  .rules li::before{content:"";position:absolute;left:4px;top:7px;width:6px;height:6px;
+    border-radius:50%;background:var(--accent);opacity:.75}
+  kbd{background:#1c2530;border:1px solid #2c3946;border-bottom-width:2px;border-radius:5px;
+    padding:1px 6px;font-size:11px;font-family:inherit;color:#cfd9e3}
+
+  .config-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:24px}
+  .config-item{display:flex;flex-direction:column;gap:6px}
+  .config-item label{font-size:11px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase}
+  .config-item select,.config-item input{
+    background:#161e27;border:1px solid var(--line);border-radius:9px;
+    padding:10px 12px;color:var(--txt);font-family:inherit;font-size:14px;outline:none;
+    transition:border-color .18s;
+  }
+  .config-item select:focus,.config-item input:focus{border-color:var(--accent)}
+  .config-item select option{background:#161e27;color:var(--txt)}
+
+  .modes{display:flex;gap:14px;margin-top:26px;flex-wrap:wrap}
+  .mode{
+    flex:1;min-width:200px;text-align:left;cursor:pointer;
+    background:#161e27;border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;color:var(--txt);font-family:inherit;
+    transition:.18s border-color,.18s background,.18s transform;
+  }
+  .mode:hover{border-color:var(--accent);background:#18222c;transform:translateY(-1px)}
+  .mode b{display:block;font-size:15px;margin-bottom:5px}
+  .mode span{font-size:12px;color:var(--dim);letter-spacing:.02em}
+  .hint{margin-top:20px;font-size:11.5px;color:#5f6b78;letter-spacing:.03em}
+  .hint.center{text-align:center}
+
+  .reco{display:flex;align-items:baseline;justify-content:center;gap:10px;
+    padding:24px 0 6px;flex-wrap:wrap}
+  .reco-num{font-size:64px;font-weight:700;letter-spacing:-.04em;color:var(--accent);
+    line-height:1;font-variant-numeric:tabular-nums;text-shadow:0 0 34px rgba(92,255,157,.35)}
+  .reco-unit{font-size:16px;color:var(--dim);letter-spacing:.05em}
+  .reco-sub{text-align:center;font-size:12px;color:var(--dim);letter-spacing:.18em;margin-bottom:6px}
+
+  .ingame-box{
+    margin:14px auto 0;max-width:460px;text-align:center;
+    background:linear-gradient(135deg,#0f1a14,#0d1510);
+    border:1px solid rgba(92,255,157,.25);border-radius:14px;padding:20px 24px;
+  }
+  .ingame-box .game-name{font-size:12px;color:var(--dim);letter-spacing:.12em;margin-bottom:8px}
+  .ingame-box .value{font-size:52px;font-weight:700;color:#8bffbe;line-height:1;
+    font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+    text-shadow:0 0 30px rgba(92,255,157,.4)}
+  .ingame-box .unit{font-size:14px;color:var(--dim);margin-top:6px}
+  .ingame-box .dpi-note{font-size:11px;color:#5f6b78;margin-top:10px;letter-spacing:.04em}
+  .edpi-row{
+    margin-top:14px;padding-top:14px;border-top:1px solid rgba(92,255,157,.15);
+    display:flex;align-items:baseline;justify-content:center;gap:8px;
+  }
+  .edpi-label{font-size:11px;color:var(--dim);letter-spacing:.1em}
+  .edpi-value{font-size:28px;font-weight:700;color:#e6edf3;font-variant-numeric:tabular-nums;
+    letter-spacing:-.02em}
+  .edpi-sub{font-size:10px;color:#5f6b78;margin-top:4px;letter-spacing:.04em}
+
+  .bar-row{margin-bottom:14px}
+  .bar-top{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:6px}
+  .bar-top .sens{color:#c6d0da;font-variant-numeric:tabular-nums}
+  .bar-top .sens i{font-style:normal;color:#5f6b78;font-size:11px}
+  .bar-top .score{font-weight:600;font-variant-numeric:tabular-nums;color:var(--dim)}
+  .bar-track{height:7px;border-radius:4px;background:#1a222c;overflow:hidden}
+  .bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#2f6f52,#5cff9d);
+    transition:width .5s cubic-bezier(.2,.8,.2,1)}
+  .bar-row.best .bar-fill{background:linear-gradient(90deg,#3b8f66,#8bffbe);
+    box-shadow:0 0 16px rgba(92,255,157,.45)}
+  .bar-row.best .bar-top .score{color:var(--accent)}
+  .bar-meta{font-size:11px;color:#5f6b78;margin-top:5px;letter-spacing:.02em}
+
+  .tips{margin-top:18px;display:flex;flex-direction:column;gap:8px}
+  .tip{font-size:12.5px;color:#96a3b0;line-height:1.55;padding-left:16px;position:relative}
+  .tip::before{content:"›";position:absolute;left:2px;color:var(--accent);opacity:.7}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="hud">
+  <div class="topbar">
+    <div class="cell"><span>灵敏度</span><b id="hSens">—</b></div>
+    <div class="cell"><span>进度</span><b id="hProg">—</b></div>
+    <div class="cell"><span>命中率</span><b id="hAcc">—</b></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="card" id="card"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* =========================================================
+   游戏库 —— 各游戏 yaw 系数（度/count）
+   ========================================================= */
+const GAMES = [
+  { id:'delta',      name:'三角洲行动',           yaw:0.022,       short:'DF' },
+  { id:'cs2',        name:'CS2 / CS:GO',         yaw:0.022,       short:'CS2' },
+  { id:'apex',       name:'Apex 英雄',            yaw:0.022,       short:'APEX' },
+  { id:'valorant',   name:'Valorant 无畏契约',    yaw:0.07,        short:'VAL' },
+  { id:'overwatch',  name:'守望先锋 2',           yaw:0.0066,      short:'OW2' },
+  { id:'r6',         name:'彩虹六号：围攻',       yaw:0.00572958,  short:'R6' },
+  { id:'destiny2',   name:'命运 2',               yaw:0.0066,      short:'D2' },
+  { id:'cod',        name:'使命召唤 / 战区',      yaw:0.0066,      short:'COD' },
+  { id:'bf6',        name:'战地 6',               yaw:0.00572958,  short:'BF6' },
+  { id:'tarkov',     name:'逃离塔科夫',           yaw:0.113636,    short:'EFT' },
+  { id:'pubg',       name:'绝地求生 PUBG',        yaw:0.00545,     short:'PUBG' },
+  { id:'fortnite',   name:'Fortnite 堡垒之夜',    yaw:0.05625,     short:'FN' },
+  { id:'thefinals',  name:'The Finals',           yaw:0.00573,     short:'TF' }
+];
+
+/* =========================================================
+   配置
+   ========================================================= */
+const CONFIG = {
+  FOV: 106,
+  MODES: {
+    fast: { levels: [10, 14, 20, 28, 40], shots: 5 },
+    std:  { levels: [8, 11, 15, 20, 26, 34, 45], shots: 6 }
+  }
+};
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const el = {
+  overlay: document.getElementById('overlay'),
+  card: document.getElementById('card'),
+  sens: document.getElementById('hSens'),
+  prog: document.getElementById('hProg'),
+  acc:  document.getElementById('hAcc')
+};
+
+let W = 0, H = 0;
+
+/* =========================================================
+   状态
+   ========================================================= */
+const g = {
+  running: false,
+  paused: false,
+  mode: 'fast',
+  levels: [],
+  shotsPer: 5,
+  levelIdx: 0,
+  shotIdx: 0,
+  shots: [],
+  results: [],
+  curSens: 20,
+  cross: { x: 0, y: 0 },
+  target: null,
+  spawnAt: 0,
+  minDist: Infinity,
+  minDistT: 0,
+  fx: [],
+  banner: null,
+  selectedGame: GAMES[0],
+  dpi: 800
+};
+
+let pendingAction = null;
+
+/* =========================================================
+   工具
+   ========================================================= */
+const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const dist = (x1, y1, x2, y2) => Math.hypot(x1 - x2, y1 - y2);
+
+function pxPerCount(cm360) {
+  const countsPer360 = cm360 * 10 * g.dpi / 25.4;
+  return (360 / countsPer360) * (W / CONFIG.FOV);
+}
+
+/* cm/360° → 游戏内灵敏度 */
+function cmToGameSens(cm360, game, dpi) {
+  return (360 * 2.54) / (cm360 * dpi * game.yaw);
+}
+
+/* 游戏内灵敏度 → eDPI */
+function toEdpi(gameSens, dpi) {
+  return Math.round(dpi * gameSens);
+}
+
+/* =========================================================
+   尺寸
+   ========================================================= */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth || window.innerWidth;
+  H = canvas.clientHeight || window.innerHeight;
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (!g.running) { g.cross.x = W / 2; g.cross.y = H / 2; }
+}
+window.addEventListener('resize', resize);
+
+/* =========================================================
+   指针锁定
+   ========================================================= */
+function lockPointer() {
+  const p = canvas.requestPointerLock();
+  if (p && typeof p.catch === 'function') p.catch(() => {});
+}
+
+document.addEventListener('pointerlockchange', () => {
+  const locked = document.pointerLockElement === canvas;
+  if (locked) {
+    el.overlay.classList.add('hidden');
+    if (pendingAction === 'resume') resumeTest();
+    else startTest(g.mode);
+    pendingAction = null;
+  } else if (g.running) {
+    g.running = false;
+    g.paused = true;
+    showPause();
+  }
+});
+document.addEventListener('pointerlockerror', () => {
+  pendingAction = null;
+  el.card.innerHTML = `<h1>鼠标锁定失败</h1>
+    <p class="lead">浏览器拒绝了鼠标锁定请求。请点击页面任意处后重试。</p>
+    <div class="modes"><button class="mode" id="btnBack"><b>返回</b><span>重新选择</span></button></div>`;
+  document.getElementById('btnBack').onclick = showStart;
+});
+
+/* =========================================================
+   开始页
+   ========================================================= */
+function showStart() {
+  g.running = false;
+  g.paused = false;
+  g.target = null;
+  el.overlay.classList.remove('hidden');
+
+  const gameOptions = GAMES.map(gm =>
+    `<option value="${gm.id}"${gm.id === g.selectedGame.id ? ' selected' : ''}>${gm.name}</option>`
+  ).join('');
+
+  el.card.innerHTML = `
+    <h1>FPS 灵敏度测试器</h1>
+    <p class="lead">先选择你主要玩的游戏并填写鼠标 DPI，测试完成后会直接告诉你该游戏内应该填写的灵敏度数值和 eDPI。</p>
+
+    <div class="config-grid">
+      <div class="config-item">
+        <label>目标游戏</label>
+        <select id="selGame">${gameOptions}</select>
+      </div>
+      <div class="config-item">
+        <label>鼠标 DPI</label>
+        <input id="inpDpi" type="number" min="100" max="6400" step="50" value="${g.dpi}" />
+      </div>
+    </div>
+
+    <ul class="rules">
+      <li>点击下方按钮后鼠标会被锁定，用绿色准星瞄准红色靶子并点击</li>
+      <li>按 <kbd>ESC</kbd> 可随时暂停，再点继续即可回到原进度</li>
+      <li>建议先关闭系统鼠标加速，结果更准确</li>
+    </ul>
+
+    <div class="modes">
+      <button class="mode" data-mode="fast"><b>快速测试</b><span>5 档 · 25 靶 · 约 40 秒</span></button>
+      <button class="mode" data-mode="std"><b>标准测试</b><span>7 档 · 42 靶 · 约 70 秒</span></button>
+    </div>
+    <p class="hint">换算基准：你的 DPI · ${CONFIG.FOV}° 水平视野 · 各游戏 yaw 系数已内置</p>
+  `;
+
+  document.getElementById('selGame').onchange = e => {
+    g.selectedGame = GAMES.find(x => x.id === e.target.value) || GAMES[0];
+  };
+  document.getElementById('inpDpi').oninput = e => {
+    const v = parseInt(e.target.value, 10);
+    if (v >= 100 && v <= 6400) g.dpi = v;
+  };
+
+  el.card.querySelectorAll('.mode').forEach(btn => {
+    btn.onclick = () => {
+      g.mode = btn.dataset.mode;
+      pendingAction = 'start';
+      lockPointer();
+    };
+  });
+}
+
+/* =========================================================
+   测试流程
+   ========================================================= */
+function startTest(mode) {
+  const m = CONFIG.MODES[mode] || CONFIG.MODES.fast;
+  g.mode = mode;
+  g.levels = m.levels.slice();
+  g.shotsPer = m.shots;
+  g.results = [];
+  g.levelIdx = 0;
+  g.shotIdx = 0;
+  g.shots = [];
+  g.target = null;
+  g.fx = [];
+  g.paused = false;
+  g.cross = { x: W / 2, y: H / 2 };
+  g.curSens = g.levels[0];
+  g.running = true;
+
+  const now = performance.now();
+  g.banner = { text: `${g.curSens} cm/360°`, sub: '准备…', until: now + 1500 };
+  g.spawnAt = now + 1500;
+  el.overlay.classList.add('hidden');
+}
+
+function showPause() {
+  el.overlay.classList.remove('hidden');
+  el.card.innerHTML = `
+    <h1>已暂停</h1>
+    <p class="lead">测试进度已保留。点击下方按钮重新锁定鼠标继续。</p>
+    <div class="modes">
+      <button class="mode" id="btnResume"><b>继续测试</b><span>重新锁定鼠标</span></button>
+    </div>
+  `;
+  document.getElementById('btnResume').onclick = () => {
+    pendingAction = 'resume';
+    lockPointer();
+  };
+}
+
+function resumeTest() {
+  g.running = true;
+  g.paused = false;
+  const now = performance.now();
+  if (g.target) {
+    g.target.born = now;
+    g.minDist = Infinity;
+    g.minDistT = now;
+  } else if (!g.spawnAt) {
+    g.spawnAt = now + 450;
+  }
+  el.overlay.classList.add('hidden');
+}
+
+/* =========================================================
+   鼠标输入
+   ========================================================= */
+document.addEventListener('mousemove', e => {
+  if (!g.running || document.pointerLockElement !== canvas) return;
+  const k = pxPerCount(g.curSens);
+  const pad = 6;
+  let nx = g.cross.x + e.movementX * k;
+  let ny = g.cross.y + e.movementY * k;
+  g.cross.x = Math.max(pad, Math.min(W - pad, nx));
+  g.cross.y = Math.max(pad, Math.min(H - pad, ny));
+});
+
+canvas.addEventListener('mousedown', e => {
+  if (document.pointerLockElement !== canvas) return;
+  if (!g.running || !g.target) return;
+  e.preventDefault();
+  if (e.button !== 0) return;
+  shoot(performance.now());
+});
+
+/* =========================================================
+   靶子
+   ========================================================= */
+function spawnTarget(now) {
+  const r = 20 + Math.random() * 10;
+  const pad = 56;
+  const availW = Math.max(40, W - 2 * (pad + r));
+  const availH = Math.max(40, H - 2 * (pad + r));
+  const minGap = Math.min(W, H) * 0.30;
+  let x = W / 2, y = H / 2;
+  for (let i = 0; i < 60; i++) {
+    x = pad + r + Math.random() * availW;
+    y = pad + r + Math.random() * availH;
+    if (dist(x, y, g.cross.x, g.cross.y) > minGap) break;
+  }
+  g.target = { x, y, r, born: now };
+  g.minDist = Infinity;
+  g.minDistT = now;
+}
+
+function shoot(now) {
+  const t = g.target;
+  const d = dist(g.cross.x, g.cross.y, t.x, t.y);
+  const hit = d <= t.r;
+  const time = now - t.born;
+  const over = (g.minDistT < now - 90) && (g.minDist < t.r * 0.5) && (d > t.r * 0.6);
+
+  g.fx.push({ x: t.x, y: t.y, r: t.r, born: now, hit });
+  endShot(now, { time, hit, d, r: t.r, minDist: g.minDist, over, sens: g.curSens });
+}
+
+function endShot(now, shot) {
+  g.shots.push(shot);
+  g.target = null;
+  g.shotIdx++;
+
+  if (g.shotIdx >= g.shotsPer) {
+    finishLevel(now);
+  } else {
+    g.spawnAt = now + 220 + Math.random() * 260;
+  }
+}
+
+function finishLevel(now) {
+  const stats = scoreLevel(g.shots);
+  g.results.push({ sens: g.curSens, stats, shots: g.shots.slice() });
+  g.levelIdx++;
+
+  if (g.levelIdx >= g.levels.length) {
+    g.running = false;
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
+    showResults();
+    return;
+  }
+
+  g.curSens = g.levels[g.levelIdx];
+  g.shotIdx = 0;
+  g.shots = [];
+  g.target = null;
+  g.cross = { x: W / 2, y: H / 2 };
+  g.banner = { text: `${g.curSens} cm/360°`, sub: '准备…', until: now + 1500 };
+  g.spawnAt = now + 1500;
+}
+
+/* =========================================================
+   评分
+   ========================================================= */
+function scoreLevel(shots) {
+  const n = shots.length || 1;
+  const hits = shots.filter(s => s.hit);
+  const acc = hits.length / n;
+  const avgTime = hits.length ? hits.reduce((a, s) => a + s.time, 0) / hits.length : 1300;
+  const timeScore = clamp01((1100 - avgTime) / 800);
+  const avgOff = hits.length ? hits.reduce((a, s) => a + s.d / s.r, 0) / hits.length : 1;
+  const precScore = clamp01(1 - avgOff);
+  const overRate = shots.filter(s => s.over).length / n;
+  const score = Math.round(100 * (0.45 * acc + 0.35 * timeScore + 0.20 * precScore));
+  return { acc, avgTime, precScore, overRate, score, hits: hits.length, n: shots.length };
+}
+
+/* =========================================================
+   结果页 —— 游戏内灵敏度 + eDPI
+   ========================================================= */
+function showResults() {
+  const rs = g.results;
+  if (!rs.length) { showStart(); return; }
+
+  const top = rs.reduce((a, b) => (b.stats.score > a.stats.score ? b : a));
+  const close = rs.filter(r => top.stats.score - r.stats.score <= 4).map(r => r.sens);
+  const lo = Math.min(...close);
+  const hi = Math.max(...close);
+  const recoMid = (lo + hi) / 2;
+
+  const game = g.selectedGame;
+
+  // 换算游戏内灵敏度
+  const sensLo = cmToGameSens(hi, game, g.dpi);
+  const sensHi = cmToGameSens(lo, game, g.dpi);
+  const sensReco = cmToGameSens(recoMid, game, g.dpi);
+
+  const sensDisplay = sensLo.toFixed(3) === sensHi.toFixed(3)
+    ? sensReco.toFixed(3)
+    : `${sensHi.toFixed(3)} ~ ${sensLo.toFixed(3)}`;
+
+  // eDPI 范围
+  const edpiLo = toEdpi(sensHi, g.dpi);
+  const edpiHi = toEdpi(sensLo, g.dpi);
+  const edpiDisplay = edpiLo === edpiHi ? String(edpiLo) : `${edpiLo} ~ ${edpiHi}`;
+
+  const topIdx = rs.findIndex(r => r.sens === top.sens);
+
+  const bars = rs.map(r => {
+    const s = r.stats;
+    const best = (r.sens === top.sens) ? ' best' : '';
+    return `
+      <div class="bar-row${best}">
+        <div class="bar-top">
+          <span class="sens">${r.sens} <i>cm/360°</i></span>
+          <span class="score">${s.score}</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${s.score}%"></div></div>
+        <div class="bar-meta">命中 ${Math.round(s.acc * 100)}% · 平均 ${(s.avgTime / 1000).toFixed(2)}s · 精度 ${Math.round(s.precScore * 100)}</div>
+      </div>`;
+  }).join('');
+
+  const tips = [];
+  if (topIdx === 0) tips.push('最低档得分最高 —— 你的最佳灵敏度可能在测试范围之外，建议往下探。');
+  if (topIdx === rs.length - 1) tips.push('最高档得分最高 —— 建议把测试范围再往上扩展一档。');
+  const overAvg = rs.reduce((a, r) => a + r.stats.overRate, 0) / rs.length;
+  if (overAvg > 0.3) tips.push('整体过冲率偏高，灵敏度可能偏快，可尝试偏慢的一档。');
+  if (game.id === 'delta') {
+    tips.push('三角洲行动职业选手的 eDPI 普遍在 200–400 区间（800 DPI 下对应灵敏度 0.25–0.5），可参考校准。');
+  }
+  tips.push(`在 ${game.name} 中先填入推荐值，再根据手感微调 ±0.1。`);
+
+  el.overlay.classList.remove('hidden');
+  el.card.innerHTML = `
+    <h1>测试结果</h1>
+    <p class="lead">综合命中率（45%）、反应速度（35%）与瞄准精度（20%）计算得分。</p>
+
+    <div class="reco-sub" style="margin-top:26px">推荐物理灵敏度</div>
+    <div class="reco">
+      <div class="reco-num">${lo === hi ? lo : lo + '–' + hi}</div>
+      <div class="reco-unit">cm / 360°</div>
+    </div>
+
+    <div class="ingame-box">
+      <div class="game-name">${game.name} · ${g.dpi} DPI</div>
+      <div class="value">${sensDisplay}</div>
+      <div class="unit">游戏内灵敏度（小数）</div>
+
+      <div class="edpi-row">
+        <span class="edpi-label">eDPI</span>
+        <span class="edpi-value">${edpiDisplay}</span>
+      </div>
+      <div class="edpi-sub">有效DPI = ${g.dpi} × ${sensDisplay} · 数值越小越适合手臂流</div>
+
+      <div class="dpi-note">yaw 系数 ${game.yaw} · 换算自 cm/360° 推荐区间</div>
+    </div>
+
+    <h2>各档位得分</h2>
+    ${bars}
+
+    <h2>分析建议</h2>
+    <div class="tips">${tips.map(t => `<div class="tip">${t}</div>`).join('')}</div>
+
+    <div class="modes" style="margin-top:26px">
+      <button class="mode" id="btnAgain"><b>再测一次</b><span>可更换游戏或 DPI</span></button>
+    </div>
+  `;
+  document.getElementById('btnAgain').onclick = showStart;
+}
+
+/* =========================================================
+   HUD
+   ========================================================= */
+function updateHUD() {
+  if (!g.running) {
+    el.sens.textContent = '—';
+    el.prog.textContent = '—';
+    el.acc.textContent = '—';
+    return;
+  }
+  el.sens.textContent = g.curSens + ' cm';
+  el.prog.textContent = `${Math.min(g.levelIdx + 1, g.levels.length)}/${g.levels.length} · ${g.shotIdx}/${g.shotsPer}`;
+  const n = g.shots.length;
+  el.acc.textContent = n ? Math.round(g.shots.filter(s => s.hit).length / n * 100) + '%' : '—';
+}
+
+/* =========================================================
+   主循环
+   ========================================================= */
+function update(now) {
+  if (g.running) {
+    if (!g.target && g.spawnAt && now >= g.spawnAt && g.shotIdx < g.shotsPer) {
+      spawnTarget(now);
+      g.spawnAt = 0;
+    }
+    if (g.target) {
+      const d = dist(g.cross.x, g.cross.y, g.target.x, g.target.y);
+      if (d < g.minDist) { g.minDist = d; g.minDistT = now; }
+      if (now - g.target.born > 5000) {
+        const t = g.target;
+        endShot(now, {
+          time: 5000, hit: false, d: 9999, r: t.r,
+          minDist: g.minDist, over: false, sens: g.curSens
+        });
+      }
+    }
+  }
+  g.fx = g.fx.filter(f => now - f.born < 480);
+  if (g.banner && now > g.banner.until) g.banner = null;
+  updateHUD();
+}
+
+function render(now) {
+  ctx.fillStyle = '#0b0f14';
+  ctx.fillRect(0, 0, W, H);
+  drawGrid();
+  drawFx(now);
+  if (g.target) drawTarget(g.target, now);
+  if (g.running) drawCrosshair();
+  drawBanner(now);
+}
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(255,255,255,.032)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x < W; x += 64) { ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, H); }
+  for (let y = 0; y < H; y += 64) { ctx.moveTo(0, y + .5); ctx.lineTo(W, y + .5); }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  ctx.beginPath();
+  ctx.arc(W / 2, H / 2, Math.min(W, H) * 0.22, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawTarget(t, now) {
+  const age = now - t.born;
+  const pop = Math.min(1, age / 90);
+  const r = t.r * (0.86 + 0.14 * pop);
+  ctx.save();
+  ctx.translate(t.x, t.y);
+  ctx.shadowColor = 'rgba(255,82,82,.55)';
+  ctx.shadowBlur = 18;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#251016';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#ff5252';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,82,82,.7)';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2);
+  ctx.fillStyle = '#ff5252';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawCrosshair() {
+  const { x, y } = g.cross;
+  const gap = 4, len = 9;
+  ctx.save();
+  ctx.strokeStyle = '#5cff9d';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = 'rgba(92,255,157,.85)';
+  ctx.shadowBlur = 9;
+  ctx.beginPath();
+  ctx.moveTo(x - gap - len, y); ctx.lineTo(x - gap, y);
+  ctx.moveTo(x + gap, y);       ctx.lineTo(x + gap + len, y);
+  ctx.moveTo(x, y - gap - len); ctx.lineTo(x, y - gap);
+  ctx.moveTo(x, y + gap);       ctx.lineTo(x, y + gap + len);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 1.6, 0, Math.PI * 2);
+  ctx.fillStyle = '#5cff9d';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawFx(now) {
+  for (const f of g.fx) {
+    const p = (now - f.born) / 460;
+    if (p < 0 || p > 1) continue;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.r + p * 36, 0, Math.PI * 2);
+    ctx.strokeStyle = f.hit
+      ? `rgba(92,255,157,${1 - p})`
+      : `rgba(255,82,82,${(1 - p) * 0.55})`;
+    ctx.lineWidth = 3 * (1 - p);
+    ctx.stroke();
+  }
+}
+
+function drawBanner(now) {
+  if (!g.banner) return;
+  const alpha = Math.min(1, (g.banner.until - now) / 320);
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#e6edf3';
+  ctx.font = '700 40px system-ui,-apple-system,"PingFang SC",sans-serif';
+  ctx.fillText(g.banner.text, W / 2, H * 0.28);
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '400 14px system-ui,-apple-system,"PingFang SC",sans-serif';
+  ctx.fillText(g.banner.sub, W / 2, H * 0.28 + 30);
+  ctx.restore();
+}
+
+function loop(now) {
+  requestAnimationFrame(loop);
+  update(now);
+  render(now);
+}
+
+/* =========================================================
+   启动
+   ========================================================= */
+resize();
+showStart();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
