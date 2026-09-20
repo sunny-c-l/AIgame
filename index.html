@@ -103,6 +103,14 @@
                 colorGlow: '#3b6fdf',
                 url: 'https://sunny-c-l.github.io/AIgame/sensitivitytest.html',
                 desc: '找到最适合你的参数',
+            }, {
+                id: 'clickTraining',
+                name: '点小球 + 背闪练习',
+                icon: 'crosshair',
+                color: '#2ECC71',
+                colorGlow: '#27ae60',
+                url: 'clickTraining.html',
+                desc: '反应与抗闪综合训练',
             }];
 
             let cardLayouts = [];
@@ -438,6 +446,47 @@
                         ctx.lineTo(off, mouseTop + mouseH + 1.5 * s + len);
                         ctx.stroke();
                     }
+                } else if (iconType === 'crosshair') {
+                    // ---------- 十字准星图标 ----------
+                    const armLen = 16 * s;
+                    const armWidth = 3.5 * s;
+                    const centerGap = 5 * s;
+                    const tipRadius = 2.2 * s;
+
+                    // 外发光
+                    ctx.save();
+                    ctx.shadowColor = color;
+                    ctx.shadowBlur = 10 * s;
+                    
+                    // 上臂
+                    ctx.fillStyle = color;
+                    ctx.fillRect(-armWidth/2, -armLen, armWidth, armLen - centerGap);
+                    // 下臂
+                    ctx.fillRect(-armWidth/2, centerGap, armWidth, armLen - centerGap);
+                    // 左臂
+                    ctx.fillRect(-armLen, -armWidth/2, armLen - centerGap, armWidth);
+                    // 右臂
+                    ctx.fillRect(centerGap, -armWidth/2, armLen - centerGap, armWidth);
+                    
+                    // 四角圆点
+                    const cornerOffset = armLen * 0.7;
+                    ctx.beginPath();
+                    ctx.arc(-cornerOffset, -cornerOffset, tipRadius, 0, Math.PI * 2);
+                    ctx.arc(cornerOffset, -cornerOffset, tipRadius, 0, Math.PI * 2);
+                    ctx.arc(-cornerOffset, cornerOffset, tipRadius, 0, Math.PI * 2);
+                    ctx.arc(cornerOffset, cornerOffset, tipRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.restore();
+                    
+                    // 中心小圆
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 3 * s, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ECF0F1';
+                    ctx.fill();
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1.5 * s;
+                    ctx.stroke();
                 }
 
                 ctx.restore();
