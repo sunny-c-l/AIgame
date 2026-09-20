@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 点小球练枪 + 背闪练习</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            color: #fff;
+            font-size: 24px;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            color: #fff;
+            font-size: 16px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #00ffff;
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        .mode-btn {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .mode-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, #00ffff, #0080ff);
+            border-color: #00ffff;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .game-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            min-width: 200px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        .control-group select,
+        .control-group input {
+            width: 100%;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .control-group select:focus,
+        .control-group input:focus {
+            outline: none;
+            border-color: #00ffff;
+        }
+
+        .start-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #00ffff, #0080ff);
+            border: none;
+            border-radius: 8px;
+            color: #000;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .start-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .start-btn:active {
+            transform: scale(0.95);
+        }
+
+        .flash-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.1s;
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 10px;
+            color: #fff;
+            text-align: center;
+            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .pulse {
+            animation: pulse 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 点小球练枪 + 背闪练习</h1>
+        <div class="stats">
+            <div class="stat-item">
+                <span class="stat-label">得分</span>
+                <span class="stat-value" id="score">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">准确率</span>
+                <span class="stat-value" id="accuracy">100%</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">时间</span>
+                <span class="stat-value" id="timer">60</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div class="flash-overlay" id="flashOverlay"></div>
+        
+        <div class="controls">
+            <div class="mode-selector">
+                <button class="mode-btn active" data-mode="aim">点小球</button>
+                <button class="mode-btn" data-mode="flash">背闪练习</button>
+            </div>
+            
+            <div class="control-group">
+                <label>难度等级</label>
+                <select id="difficulty">
+                    <option value="easy">简单</option>
+                    <option value="medium" selected>中等</option>
+                    <option value="hard">困难</option>
+                    <option value="expert">专家</option>
+                </select>
+            </div>
+
+            <div class="control-group" id="ballSizeGroup">
+                <label>小球大小</label>
+                <input type="range" id="ballSize" min="20" max="80" value="50">
+            </div>
+
+            <div class="control-group" id="flashDurationGroup">
+                <label>闪光持续时间 (秒)</label>
+                <input type="range" id="flashDuration" min="1" max="5" value="3" step="0.5">
+            </div>
+
+            <button class="start-btn" id="startBtn">开始训练</button>
+        </div>
+
+        <div class="instructions" id="instructions">
+            点击"开始训练"按钮开始练习 | 点小球模式：快速点击出现的小球 | 背闪模式：闪光后迅速转身瞄准
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const accuracyEl = document.getElementById('accuracy');
+        const timerEl = document.getElementById('timer');
+        const startBtn = document.getElementById('startBtn');
+        const flashOverlay = document.getElementById('flashOverlay');
+        const instructions = document.getElementById('instructions');
+        const difficultySelect = document.getElementById('difficulty');
+        const ballSizeInput = document.getElementById('ballSize');
+        const flashDurationInput = document.getElementById('flashDuration');
+        const modeBtns = document.querySelectorAll('.mode-btn');
+        const ballSizeGroup = document.getElementById('ballSizeGroup');
+        const flashDurationGroup = document.getElementById('flashDurationGroup');
+
+        let gameRunning = false;
+        let score = 0;
+        let clicks = 0;
+        let hits = 0;
+        let timeLeft = 60;
+        let timerInterval;
+        let balls = [];
+        let currentMode = 'aim';
+        let flashActive = false;
+        let flashTimer = null;
+
+        // 调整画布大小
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 难度设置
+        const difficulties = {
+            easy: { spawnRate: 1500, ballSpeed: 2, maxBalls: 3 },
+            medium: { spawnRate: 1000, ballSpeed: 4, maxBalls: 5 },
+            hard: { spawnRate: 700, ballSpeed: 6, maxBalls: 8 },
+            expert: { spawnRate: 500, ballSpeed: 8, maxBalls: 12 }
+        };
+
+        // 小球类
+        class Ball {
+            constructor() {
+                this.radius = parseInt(ballSizeInput.value);
+                this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+                this.y = Math.random() * (canvas.height - this.radius * 2) + this.radius;
+                this.vx = (Math.random() - 0.5) * difficulties[difficultySelect.value].ballSpeed * 2;
+                this.vy = (Math.random() - 0.5) * difficulties[difficultySelect.value].ballSpeed * 2;
+                this.color = `hsl(${Math.random() * 360}, 70%, 60%)`;
+                this.createdAt = Date.now();
+                this.maxLifetime = 3000; // 3秒后消失
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 边界检测
+                if (this.x - this.radius < 0 || this.x + this.radius > canvas.width) {
+                    this.vx = -this.vx;
+                }
+                if (this.y - this.radius < 0 || this.y + this.radius > canvas.height) {
+                    this.vy = -this.vy;
+                }
+
+                // 限制在画布内
+                this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x));
+                this.y = Math.max(this.radius, Math.min(canvas.height - this.radius, this.y));
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.closePath();
+
+                // 绘制高光
+                ctx.beginPath();
+                ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            isClicked(mouseX, mouseY) {
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                return Math.sqrt(dx * dx + dy * dy) < this.radius;
+            }
+        }
+
+        // 生成小球
+        function spawnBall() {
+            if (balls.length < difficulties[difficultySelect.value].maxBalls) {
+                balls.push(new Ball());
+            }
+        }
+
+        // 游戏循环
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 更新和绘制小球
+            balls.forEach((ball, index) => {
+                ball.update();
+                ball.draw();
+
+                // 检查是否超时
+                if (Date.now() - ball.createdAt > ball.maxLifetime) {
+                    balls.splice(index, 1);
+                }
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 点击事件处理
+        canvas.addEventListener('click', (e) => {
+            if (!gameRunning) return;
+
+            clicks++;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            let hit = false;
+            for (let i = balls.length - 1; i >= 0; i--) {
+                if (balls[i].isClicked(mouseX, mouseY)) {
+                    hits++;
+                    score += 10;
+                    scoreEl.textContent = score;
+                    balls.splice(i, 1);
+                    hit = true;
+                    
+                    // 添加点击效果
+                    createClickEffect(mouseX, mouseY);
+                    break;
+                }
+            }
+
+            updateAccuracy();
+        });
+
+        // 点击效果
+        function createClickEffect(x, y) {
+            const effect = document.createElement('div');
+            effect.style.position = 'absolute';
+            effect.style.left = x + 'px';
+            effect.style.top = y + 'px';
+            effect.style.width = '20px';
+            effect.style.height = '20px';
+            effect.style.borderRadius = '50%';
+            effect.style.background = 'radial-gradient(circle, #00ffff, transparent)';
+            effect.style.transform = 'translate(-50%, -50%)';
+            effect.style.pointerEvents = 'none';
+            effect.style.animation = 'pulse 0.3s ease-out forwards';
+            document.querySelector('.game-container').appendChild(effect);
+
+            setTimeout(() => effect.remove(), 300);
+        }
+
+        // 更新准确率
+        function updateAccuracy() {
+            const accuracy = clicks > 0 ? Math.round((hits / clicks) * 100) : 100;
+            accuracyEl.textContent = accuracy + '%';
+        }
+
+        // 计时器
+        function startTimer() {
+            clearInterval(timerInterval);
+            timeLeft = 60;
+            timerEl.textContent = timeLeft;
+
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerEl.textContent = timeLeft;
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        // 开始游戏
+        function startGame() {
+            if (gameRunning) return;
+
+            gameRunning = true;
+            score = 0;
+            clicks = 0;
+            hits = 0;
+            balls = [];
+            scoreEl.textContent = score;
+            updateAccuracy();
+            instructions.classList.add('hidden');
+
+            startBtn.textContent = '训练中...';
+            startBtn.disabled = true;
+
+            startTimer();
+            gameLoop();
+
+            // 根据模式启动不同的逻辑
+            if (currentMode === 'aim') {
+                startAimMode();
+            } else {
+                startFlashMode();
+            }
+        }
+
+        // 点小球模式
+        function startAimMode() {
+            const diff = difficulties[difficultySelect.value];
+            const spawnInterval = setInterval(() => {
+                if (!gameRunning) {
+                    clearInterval(spawnInterval);
+                    return;
+                }
+                spawnBall();
+            }, diff.spawnRate);
+        }
+
+        // 背闪模式
+        function startFlashMode() {
+            triggerFlash();
+        }
+
+        function triggerFlash() {
+            if (!gameRunning) return;
+
+            flashActive = true;
+            flashOverlay.style.opacity = '1';
+            
+            // 清空所有小球
+            balls = [];
+
+            // 闪光持续时间后恢复
+            const duration = parseFloat(flashDurationInput.value) * 1000;
+            setTimeout(() => {
+                flashOverlay.style.opacity = '0';
+                flashActive = false;
+                
+                // 闪光结束后生成目标
+                setTimeout(() => {
+                    if (gameRunning) {
+                        spawnBall();
+                        // 继续生成小球
+                        const diff = difficulties[difficultySelect.value];
+                        const spawnInterval = setInterval(() => {
+                            if (!gameRunning || flashActive) {
+                                clearInterval(spawnInterval);
+                                return;
+                            }
+                            spawnBall();
+                        }, diff.spawnRate * 1.5); // 背闪模式生成速度稍慢
+                    }
+                }, 300);
+
+                // 下一次闪光
+                setTimeout(() => {
+                    if (gameRunning) {
+                        triggerFlash();
+                    }
+                }, 5000 + Math.random() * 3000); // 5-8秒后再次闪光
+
+            }, duration);
+        }
+
+        // 结束游戏
+        function endGame() {
+            gameRunning = false;
+            clearInterval(timerInterval);
+            startBtn.textContent = '开始训练';
+            startBtn.disabled = false;
+            instructions.classList.remove('hidden');
+            instructions.innerHTML = `训练结束！最终得分: ${score} | 准确率: ${accuracyEl.textContent} | 点击"开始训练"重新开始`;
+            
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            balls = [];
+        }
+
+        // 模式切换
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentMode = btn.dataset.mode;
+
+                // 显示/隐藏相关控件
+                if (currentMode === 'aim') {
+                    ballSizeGroup.style.display = 'block';
+                    flashDurationGroup.style.display = 'none';
+                    instructions.innerHTML = '点小球模式：快速点击出现的小球，提升反应速度和精准度';
+                } else {
+                    ballSizeGroup.style.display = 'none';
+                    flashDurationGroup.style.display = 'block';
+                    instructions.innerHTML = '背闪模式：屏幕闪光后迅速转身瞄准目标，模拟游戏中躲避闪光弹后的反击';
+                }
+
+                // 如果游戏正在运行，先结束
+                if (gameRunning) {
+                    endGame();
+                }
+            });
+        });
+
+        // 开始按钮
+        startBtn.addEventListener('click', startGame);
+
+        // 初始化显示
+        ballSizeGroup.style.display = 'block';
+        flashDurationGroup.style.display = 'none';
+    </script>
+</body>
+</html>
